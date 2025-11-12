@@ -1,0 +1,300 @@
+---
+alwaysApply: true
+---
+    updatedAt: new Date(),
+  })
+  .where(and(
+    eq(decksTable.id, deckId),
+    eq(decksTable.userId, userId)
+  ))
+  .returning();
+
+// Update a card
+const [updatedCard] = await db
+  .update(cardsTable)
+  .set({
+    front: "Updated Question",
+    back: "Updated Answer",
+    updatedAt: new Date(),
+  })
+  .where(eq(cardsTable.id, cardId))
+  .returning();
+```
+
+### DELETE Operations
+
+#### Delete Records
+```typescript
+// Delete a deck (cascades to cards automatically)
+const [deletedDeck] = await db
+  .delete(decksTable)
+  .where(and(
+    eq(decksTable.id, deckId),
+    eq(decksTable.userId, userId)
+  ))
+  .returning();
+
+// Delete a card
+const [deletedCard] = await db
+  .delete(cardsTable)
+  .where(eq(cardsTable.id, cardId))
+  .returning();
+
+// Delete all cards in a deck
+await db
+  .delete(cardsTable)
+  .where(eq(cardsTable.deckId, deckId));
+```
+
+## Security Rules
+
+### User Authorization
+**CRITICAL**: Always verify user ownership before operations on decks.
+
+```typescript
+// ✅ CORRECT: Check userId in query
+const deck = await db
+  .select()
+  .from(decksTable)
+  .where(and(
+    eq(decksTable.id, deckId),
+    eq(decksTable.userId, userId) // Always verify ownership
+  ));
+
+// ❌ INCORRECT: No userId check
+const deck = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.id, deckId));
+```
+
+### Clerk Integration
+Always get the current user ID from Clerk:
+
+```typescript
+import { auth } from "@clerk/nextjs/server";
+
+// In Server Components or Route Handlers
+const { userId } = await auth();
+
+if (!userId) {
+  // Handle unauthorized access
+  throw new Error("Unauthorized");
+}
+```
+
+## Error Handling
+
+### Standard Error Handling Pattern
+```typescript
+try {
+  const result = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+  
+  return result;
+} catch (error) {
+  console.error("Database error:", error);
+  throw new Error("Failed to fetch decks");
+}
+```
+
+### Validation Before Database Operations
+```typescript
+// Validate input before database operation
+if (!name || name.trim().length === 0) {
+  throw new Error("Deck name is required");
+}
+
+if (name.length > 255) {
+  throw new Error("Deck name must be 255 characters or less");
+}
+
+const [newDeck] = await db
+  .insert(decksTable)
+  .values({ userId, name, description })
+  .returning();
+```
+
+## Type Safety
+
+### Use Drizzle Inferred Types
+```typescript
+import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
+import { decksTable, cardsTable } from "@/db/schema";
+
+// Types for SELECT queries
+export type Deck = InferSelectModel<typeof decksTable>;
+export type Card = InferSelectModel<typeof cardsTable>;
+
+// Types for INSERT queries
+export type NewDeck = InferInsertModel<typeof decksTable>;
+export type NewCard = InferInsertModel<typeof cardsTable>;
+```
+
+### Usage in Functions
+```typescript
+async function createDeck(data: NewDeck): Promise<Deck> {
+  const [deck] = await db
+    .insert(decksTable)
+    .values(data)
+    .returning();
+  
+  return deck;
+}
+
+async function getDeck(id: number, userId: string): Promise<Deck | null> {
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(and(
+      eq(decksTable.id, id),
+      eq(decksTable.userId, userId)
+    ))
+    .limit(1);
+  
+  return deck ?? null;
+}
+```
+
+## Best Practices
+
+### 1. Always Use Prepared Statements
+Drizzle automatically uses prepared statements. Never concatenate user input into SQL strings.
+
+### 2. Use `.returning()` for Insert/Update/Delete
+```typescript
+// ✅ CORRECT: Use .returning() to get the modified record
+const [deck] = await db
+  .insert(decksTable)
+  .values({ ... })
+  .returning();
+
+// ❌ INCORRECT: Don't make separate query to fetch
+const result = await db.insert(decksTable).values({ ... });
+const deck = await db.select().from(decksTable).where(...);
+```
+
+### 3. Update `updatedAt` Manually
+```typescript
+// Always update the updatedAt timestamp
+await db
+  .update(decksTable)
+  .set({
+    name: "New Name",
+    updatedAt: new Date(), // Always update this
+  })
+  .where(eq(decksTable.id, deckId));
+```
+
+### 4. Leverage Cascade Delete
+The `cardsTable` has `onDelete: "cascade"` for `deckId`. Deleting a deck automatically deletes all its cards.
+
+```typescript
+// This will delete the deck AND all its cards
+await db
+  .delete(decksTable)
+  .where(eq(decksTable.id, deckId));
+```
+
+### 5. Use Transactions for Complex Operations
+```typescript
+await db.transaction(async (tx) => {
+  // Create deck
+  const [deck] = await tx
+    .insert(decksTable)
+    .values({ userId, name, description })
+    .returning();
+  
+  // Create multiple cards
+  await tx
+    .insert(cardsTable)
+    .values(cards.map(card => ({ ...card, deckId: deck.id })));
+});
+```
+
+## File Organization
+
+### Database Queries Location
+- **Server Actions**: Create in `src/app/actions/` directory
+- **API Routes**: Create in `src/app/api/` directory
+- **Server Components**: Query directly in the component
+- **Never**: Use in Client Components (use Server Actions instead)
+
+### Example Server Action
+```typescript
+// src/app/actions/decks.ts
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+export async function createDeck(name: string, description?: string) {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+  
+  const [deck] = await db
+    .insert(decksTable)
+    .values({ userId, name, description })
+    .returning();
+  
+  revalidatePath("/dashboard");
+  return deck;
+}
+```
+
+## Common Queries Reference
+
+### Count Records
+```typescript
+// Count decks for a user
+const [{ count }] = await db
+  .select({ count: sql<number>`count(*)` })
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId));
+
+// Count cards in a deck
+const [{ count }] = await db
+  .select({ count: sql<number>`count(*)` })
+  .from(cardsTable)
+  .where(eq(cardsTable.deckId, deckId));
+```
+
+### Pagination
+```typescript
+const PAGE_SIZE = 10;
+const offset = (page - 1) * PAGE_SIZE;
+
+const decks = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId))
+  .limit(PAGE_SIZE)
+  .offset(offset)
+  .orderBy(desc(decksTable.createdAt));
+```
+
+## Prohibited Practices
+
+❌ **Never use raw SQL strings**
+❌ **Never query database in Client Components**
+❌ **Never skip userId validation for deck operations**
+❌ **Never use ORM methods other than Drizzle**
+❌ **Never directly modify database without using schema**
+❌ **Never forget to handle null/undefined results**
+
+## Key Principles
+
+1. **Schema-First**: Always reference `decksTable` and `cardsTable` from schema
+2. **Type-Safe**: Use Drizzle's inferred types
+3. **Secure**: Always validate user ownership
+4. **Consistent**: Use the same patterns throughout the codebase
+5. **Transactional**: Use transactions for multi-step operations
+6. **Server-Side**: All database queries in server components or actions

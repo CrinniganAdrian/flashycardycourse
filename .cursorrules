@@ -1,0 +1,149 @@
+# FlashyCardyCourse - Cursor AI Rules
+
+## 🔐 CRITICAL: Security First
+**ALL database operations MUST verify user ownership through Clerk authentication.**
+
+This is a flashcard learning application where users create decks and cards. Users must NEVER be able to access, modify, or delete data belonging to other users.
+
+## Quick Security Checklist
+Before ANY database operation:
+- [ ] Call `const { userId } = await auth()` from `@clerk/nextjs/server`
+- [ ] Check `if (!userId) throw new Error("Unauthorized")`
+- [ ] Include `eq(decksTable.userId, userId)` in WHERE clause
+- [ ] Verify ownership for updates and deletes
+
+## Architecture
+- **Framework**: Next.js 16 (App Router) with React 19
+- **Database**: PostgreSQL + Drizzle ORM
+- **Auth**: Clerk (handles all authentication)
+- **UI**: shadcn/ui components exclusively
+- **Styling**: Tailwind CSS v4
+
+## Data Model
+- **decksTable**: `id`, `userId` (Clerk), `name`, `description`, timestamps
+- **cardsTable**: `id`, `deckId` (FK, CASCADE), `front`, `back`, timestamps
+- **Security**: Cards inherit access control through deck ownership
+
+## Critical Rules
+
+### 1. Authentication Pattern (ALWAYS USE THIS)
+```typescript
+import { auth } from "@clerk/nextjs/server";
+
+const { userId } = await auth();
+if (!userId) {
+  throw new Error("Unauthorized");
+}
+
+// Now use userId in queries
+const decks = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId));
+```
+
+### 2. Ownership Verification (ALWAYS REQUIRED)
+```typescript
+// ✅ CORRECT - Verify deck ownership
+const [deck] = await db
+  .select()
+  .from(decksTable)
+  .where(and(
+    eq(decksTable.id, deckId),
+    eq(decksTable.userId, userId) // CRITICAL
+  ));
+
+// ✅ CORRECT - Verify card ownership through deck
+const cards = await db
+  .select()
+  .from(cardsTable)
+  .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+  .where(and(
+    eq(cardsTable.deckId, deckId),
+    eq(decksTable.userId, userId) // CRITICAL
+  ));
+```
+
+### 3. Prohibited Practices
+- ❌ NEVER query without userId verification
+- ❌ NEVER trust user IDs from client/params for authorization
+- ❌ NEVER skip ownership checks on updates/deletes
+- ❌ NEVER use database queries in Client Components
+- ❌ NEVER create custom UI components when shadcn/ui has one
+
+### 4. Server-Side Only
+- Database queries ONLY in Server Components, Server Actions, or API Routes
+- Always use `"use server"` directive for Server Actions
+- Always use `"use client"` directive for interactive components
+
+## File Organization
+- **Server Actions**: `src/app/actions/*.ts` (with "use server")
+- **API Routes**: `src/app/api/*/route.ts`
+- **Schema**: `src/db/schema.ts`
+- **UI Components**: `src/components/ui/*` (shadcn/ui)
+
+## shadcn/ui Usage
+Install components before use:
+```bash
+npx shadcn@latest add [component-name]
+```
+
+Always import from local components:
+```typescript
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+```
+
+## Middleware
+Protected routes (configured in `src/middleware.ts`):
+- `/dashboard/*` - Requires authentication
+- Unauthenticated users redirected to home page
+
+## Type Safety
+```typescript
+import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
+import { decksTable, cardsTable } from "@/db/schema";
+
+export type Deck = InferSelectModel<typeof decksTable>;
+export type Card = InferSelectModel<typeof cardsTable>;
+export type NewDeck = InferInsertModel<typeof decksTable>;
+export type NewCard = InferInsertModel<typeof cardsTable>;
+```
+
+## Error Handling Pattern
+```typescript
+const { userId } = await auth();
+if (!userId) {
+  throw new Error("Unauthorized");
+}
+
+const [resource] = await db
+  .select()
+  .from(table)
+  .where(and(
+    eq(table.id, resourceId),
+    eq(table.userId, userId)
+  ));
+
+if (!resource) {
+  throw new Error("Not found");
+}
+```
+
+## Database Best Practices
+- Use `.returning()` for insert/update/delete operations
+- Update `updatedAt` manually on updates: `{ updatedAt: new Date() }`
+- Leverage cascade delete (decks CASCADE to cards)
+- Use transactions for multi-step operations
+- Use Drizzle's type inference for type safety
+
+## Detailed Documentation
+See `.cursor/rules/` for comprehensive documentation:
+- `project-rules.mdc` - Complete project rules and patterns
+- `database-interactions.mdc` - Drizzle ORM patterns
+- `shadcn-ui.mdc` - UI component guidelines
+
+---
+
+**🚨 REMEMBER: Security is not optional. ALWAYS verify user ownership before accessing data. 🚨**
+

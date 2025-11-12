@@ -1,0 +1,381 @@
+---
+alwaysApply: true
+---
+## Database Schema
+
+### Tables
+
+#### decksTable
+- `id`: Auto-incrementing primary key
+- `userId`: **Clerk user ID** (varchar 255, NOT NULL)
+- `name`: Deck name (varchar 255, NOT NULL)
+- `description`: Optional text description
+- `createdAt`: Timestamp (default now)
+- `updatedAt`: Timestamp (default now)
+
+#### cardsTable
+- `id`: Auto-incrementing primary key
+- `deckId`: Foreign key to decks (CASCADE delete)
+- `front`: Front of card (text, NOT NULL)
+- `back`: Back of card (text, NOT NULL)
+- `createdAt`: Timestamp (default now)
+- `updatedAt`: Timestamp (default now)
+
+### Relationships
+- One deck can have many cards
+- Deleting a deck CASCADE deletes all its cards
+- Cards CANNOT exist without a deck
+- **Security Note**: Cards inherit access control through their deck's userId
+
+---
+
+## File Structure & Organization
+
+### Directory Structure
+```
+src/
+├── app/
+│   ├── dashboard/          # Protected routes (require auth)
+│   │   └── page.tsx
+│   ├── api/               # API routes (add auth checks)
+│   ├── actions/           # Server actions (add auth checks)
+│   ├── layout.tsx         # Root layout with ClerkProvider
+│   ├── page.tsx           # Home page
+│   └── globals.css
+├── components/
+│   └── ui/                # shadcn/ui components
+├── db/
+│   ├── schema.ts          # Drizzle schema
+│   └── index.ts           # Database connection
+├── lib/
+│   └── utils.ts           # Utility functions
+└── middleware.ts          # Clerk middleware (route protection)
+```
+
+### Where to Put Database Queries
+
+#### Server Actions (Recommended)
+Create in `src/app/actions/` for mutations:
+
+```typescript
+// src/app/actions/deck-actions.ts
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { revalidatePath } from "next/cache";
+
+export async function createDeck(name: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+  
+  const [deck] = await db
+    .insert(decksTable)
+    .values({ userId, name })
+    .returning();
+  
+  revalidatePath("/dashboard");
+  return deck;
+}
+```
+
+#### Server Components
+Query directly in the component for data fetching:
+
+```typescript
+// src/app/dashboard/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+
+export default async function DashboardPage() {
+  const { userId } = await auth();
+  if (!userId) redirect("/");
+  
+  const decks = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+  
+  return <div>...</div>;
+}
+```
+
+#### API Routes
+Create in `src/app/api/` for external API access:
+
+```typescript
+// src/app/api/decks/route.ts
+import { auth } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  
+  // ... fetch data with userId verification
+}
+```
+
+---
+
+## Best Practices
+
+### Security Checklist
+Before committing ANY database operation, verify:
+- [ ] `const { userId } = await auth()` is called
+- [ ] `userId` is checked for null/undefined
+- [ ] `userId` is included in WHERE clause for user-owned resources
+- [ ] Ownership is verified for updates/deletes
+- [ ] No user IDs come from client/params for authorization
+
+### Database Operations
+- Always use `.returning()` for insert/update/delete
+- Update `updatedAt` manually on updates
+- Use transactions for multi-step operations
+- Leverage cascade delete (decks → cards)
+- Always use prepared statements (Drizzle does this automatically)
+
+### Type Safety
+```typescript
+import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
+import { decksTable, cardsTable } from "@/db/schema";
+
+export type Deck = InferSelectModel<typeof decksTable>;
+export type Card = InferSelectModel<typeof cardsTable>;
+export type NewDeck = InferInsertModel<typeof decksTable>;
+export type NewCard = InferInsertModel<typeof cardsTable>;
+```
+
+### Error Handling
+```typescript
+// Always handle unauthorized access
+const { userId } = await auth();
+if (!userId) {
+  throw new Error("Unauthorized");
+}
+
+// Always handle not found + unauthorized
+const [deck] = await db
+  .select()
+  .from(decksTable)
+  .where(and(
+    eq(decksTable.id, deckId),
+    eq(decksTable.userId, userId)
+  ));
+
+if (!deck) {
+  throw new Error("Deck not found"); // Could be not found OR unauthorized
+}
+```
+
+### UI Components
+- Use shadcn/ui exclusively for UI components
+- Import from `@/components/ui/*`
+- Add `"use client"` for interactive components
+- Follow Tailwind CSS v4 conventions
+
+---
+
+## Common Patterns
+
+### Creating a New Feature Checklist
+1. **Define the data model** in `src/db/schema.ts`
+2. **Run migrations** to update database
+3. **Create server actions** in `src/app/actions/`
+4. **Add userId verification** in all actions
+5. **Create UI components** using shadcn/ui
+6. **Test authorization** - try accessing other users' data
+7. **Add proper error handling**
+
+### Query Patterns
+
+#### Get All User's Resources
+```typescript
+const { userId } = await auth();
+if (!userId) throw new Error("Unauthorized");
+
+const decks = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId))
+  .orderBy(desc(decksTable.createdAt));
+```
+
+#### Get Single Resource with Ownership Check
+```typescript
+const { userId } = await auth();
+if (!userId) throw new Error("Unauthorized");
+
+const [deck] = await db
+  .select()
+  .from(decksTable)
+  .where(and(
+    eq(decksTable.id, deckId),
+    eq(decksTable.userId, userId)
+  ));
+
+if (!deck) throw new Error("Not found");
+```
+
+#### Get Resources with Join (Verify Ownership)
+```typescript
+const { userId } = await auth();
+if (!userId) throw new Error("Unauthorized");
+
+const cards = await db
+  .select()
+  .from(cardsTable)
+  .innerJoin(decksTable, eq(cardsTable.deckId, decksTable.id))
+  .where(and(
+    eq(cardsTable.deckId, deckId),
+    eq(decksTable.userId, userId) // Verify deck ownership
+  ));
+```
+
+---
+
+## Prohibited Practices
+
+### 🚫 NEVER DO THESE
+
+1. **Never skip auth checks**
+```typescript
+// ❌ NEVER - No auth check
+export async function getDecks() {
+  return await db.select().from(decksTable);
+}
+```
+
+2. **Never trust client-provided user IDs**
+```typescript
+// ❌ NEVER - User ID from params
+async function updateDeck(userId: string, deckId: number) {
+  // userId is from client, can be manipulated!
+}
+```
+
+3. **Never query without userId in WHERE clause**
+```typescript
+// ❌ NEVER - Missing userId check
+const deck = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.id, deckId)); // Any user can access any deck!
+```
+
+4. **Never use database queries in Client Components**
+```typescript
+// ❌ NEVER - Database in client component
+"use client";
+export default function ClientComponent() {
+  const decks = await db.select().from(decksTable); // ERROR!
+}
+```
+
+5. **Never use alternative auth methods**
+```typescript
+// ❌ NEVER - Don't implement custom auth
+// ❌ NEVER - Don't use other auth libraries
+// ✅ ALWAYS - Use Clerk exclusively
+```
+
+---
+
+## Testing Security
+
+### Manual Security Tests
+Before deploying, verify:
+
+1. **Try accessing another user's deck by ID manipulation**
+   - Should return "Not found" or "Unauthorized"
+   
+2. **Try updating a deck you don't own**
+   - Should fail authorization check
+   
+3. **Try deleting a card from someone else's deck**
+   - Should fail authorization check
+   
+4. **Access protected routes while logged out**
+   - Should redirect to home page
+
+### Code Review Checklist
+- [ ] All database queries include `auth()` call
+- [ ] All deck operations verify `userId`
+- [ ] All card operations verify ownership through deck
+- [ ] No user IDs come from client/params for authorization
+- [ ] Error messages don't leak information about existence of resources
+- [ ] Server Actions have `"use server"` directive
+- [ ] Client Components have `"use client"` directive
+
+---
+
+## Environment Variables
+
+Required environment variables (see Clerk dashboard):
+```env
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
+DATABASE_URL=postgresql://...
+```
+
+---
+
+## Key Principles Summary
+
+1. **Security First**: ALWAYS verify user identity with Clerk
+2. **Never Trust Client**: Get userId from `auth()` on the server
+3. **Verify Ownership**: Check userId on ALL deck operations
+4. **Cascade Security**: Cards inherit security through deck ownership
+5. **Type Safety**: Use Drizzle's inferred types
+6. **Server-Side**: All database queries in server components/actions
+7. **shadcn/ui**: Use exclusively for UI components
+8. **Consistent Patterns**: Follow established patterns throughout
+
+---
+
+## Quick Reference
+
+### Import Statements
+```typescript
+// Auth
+import { auth } from "@clerk/nextjs/server";
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from "@clerk/nextjs";
+
+// Database
+import { db } from "@/db";
+import { decksTable, cardsTable } from "@/db/schema";
+import { eq, and, desc } from "drizzle-orm";
+
+// Next.js
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+// UI
+import { Button } from "@/components/ui/button";
+```
+
+### Common Commands
+```bash
+# Install shadcn/ui component
+npx shadcn@latest add [component-name]
+
+# Run database migrations
+npm run db:push
+
+# Development
+npm run dev
+```
+
+---
+
+**Remember: When in doubt, always verify user ownership. Security is not optional.**

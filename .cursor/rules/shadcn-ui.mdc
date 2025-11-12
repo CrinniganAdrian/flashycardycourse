@@ -1,0 +1,184 @@
+---
+alwaysApply: true
+---
+# shadcn/ui Component Library Rules
+
+## Overview
+This project uses **shadcn/ui** exclusively for all UI components. Do not create custom UI components or use alternative UI libraries when a shadcn/ui component exists.
+
+## Initial Setup
+
+### First-Time Installation
+If shadcn/ui is not initialized in the project, run:
+
+```bash
+npx shadcn@latest init
+```
+
+This command will:
+- Set up the components directory structure
+- Configure `components.json`
+- Set up Tailwind CSS integration
+- Configure path aliases (@/components/ui/*)
+
+## Installing Components
+
+### Command Syntax
+To install a specific shadcn/ui component:
+
+```bash
+npx shadcn@latest add [component-name]
+```
+
+### Common Components
+
+#### Layout & Structure
+```bash
+npx shadcn@latest add card
+npx shadcn@latest add separator
+npx shadcn@latest add sheet
+npx shadcn@latest add tabs
+```
+
+#### Forms & Inputs
+```bash
+npx shadcn@latest add button
+npx shadcn@latest add input
+npx shadcn@latest add textarea
+npx shadcn@latest add label
+npx shadcn@latest add form
+npx shadcn@latest add select
+npx shadcn@latest add checkbox
+npx shadcn@latest add radio-group
+npx shadcn@latest add switch
+npx shadcn@latest add slider
+```
+
+#### Overlays & Dialogs
+```bash
+npx shadcn@latest add dialog
+npx shadcn@latest add alert-dialog
+npx shadcn@latest add popover
+npx shadcn@latest add tooltip
+npx shadcn@latest add dropdown-menu
+npx shadcn@latest add context-menu
+```
+
+#### Feedback & Notifications
+```bash
+npx shadcn@latest add toast
+npx shadcn@latest add alert
+npx shadcn@latest add progress
+npx shadcn@latest add skeleton
+```
+
+#### Navigation
+```bash
+npx shadcn@latest add navigation-menu
+npx shadcn@latest add menubar
+npx shadcn@latest add breadcrumb
+npx shadcn@latest add pagination
+```
+
+#### Data Display
+```bash
+npx shadcn@latest add table
+npx shadcn@latest add badge
+npx shadcn@latest add avatar
+npx shadcn@latest add accordion
+npx shadcn@latest add collapsible
+```
+
+### Installing Multiple Components
+You can install multiple components at once:
+
+```bash
+npx shadcn@latest add button card input dialog
+```
+
+## Usage Rules
+
+### 1. Import from Local Components
+Always import shadcn/ui components from the local components directory:
+
+```typescript
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+```
+
+### 2. Check Before Creating Custom Components
+Before creating a custom UI component, always verify if shadcn/ui has an equivalent:
+- ✅ Use `shadcn/ui button` instead of creating a custom button
+- ✅ Use `shadcn/ui dialog` instead of creating a custom modal
+- ✅ Use `shadcn/ui card` instead of creating a custom container
+
+### 3. Component Composition
+shadcn/ui components are designed for composition. Combine them to create complex UI:
+
+```typescript
+<Card>
+  <CardHeader>
+    <CardTitle>Title</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <Button>Action</Button>
+  </CardContent>
+</Card>
+```
+
+### 4. Customization
+Modify shadcn/ui components through:
+- **className prop**: Add Tailwind classes for styling
+- **variants**: Use built-in variants (e.g., `variant="outline"`)
+- **Direct file editing**: Edit component files in `@/components/ui/` if needed
+
+### 5. Server vs Client Components
+- Most shadcn/ui components require `"use client"` (they already have it in their files)
+- When using shadcn/ui components in a file, add `"use client"` at the top if not already present
+
+## Workflow
+
+### When Adding New Features
+1. **Identify UI needs**: Determine what UI elements are required
+2. **Check shadcn/ui**: Visit [ui.shadcn.com](https://ui.shadcn.com) to find matching components
+3. **Install components**: Run `npx shadcn@latest add [component-name]`
+4. **Import and use**: Import from `@/components/ui/` and implement
+5. **Customize**: Apply Tailwind classes or modify component files as needed
+
+### Before Making Changes
+- ✅ Verify required components are installed
+- ✅ Check existing component usage for consistency
+- ✅ Review shadcn/ui documentation for best practices
+
+## Troubleshooting
+
+### Component Not Found
+If importing a component fails:
+1. Check if the component is installed: Look in `src/components/ui/`
+2. If missing, install it: `npx shadcn@latest add [component-name]`
+3. Verify the import path matches your project structure
+
+### TypeScript Errors
+- Ensure `@/components/ui/*` path alias is configured in `tsconfig.json`
+- Check that all peer dependencies are installed
+- Verify component props match TypeScript definitions
+
+### Styling Issues
+- Ensure Tailwind CSS is properly configured
+- Check that CSS variables are defined in `globals.css`
+- Verify component variants are used correctly
+
+## Resources
+
+- **Documentation**: [ui.shadcn.com](https://ui.shadcn.com/)
+- **Component List**: [ui.shadcn.com/docs/components](https://ui.shadcn.com/docs/components)
+- **Examples**: [ui.shadcn.com/examples](https://ui.shadcn.com/examples)
+- **GitHub**: [github.com/shadcn-ui/ui](https://github.com/shadcn-ui/ui)
+
+## Key Principles
+
+1. **Consistency**: Use shadcn/ui components throughout the entire project
+2. **No Alternatives**: Do not introduce other UI libraries
+3. **Install First**: Always install components before using them
+4. **Check Documentation**: Refer to shadcn/ui docs for proper usage
+5. **Maintain Pattern**: Follow established patterns in the codebase
