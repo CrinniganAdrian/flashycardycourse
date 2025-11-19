@@ -1,70 +1,38 @@
-import { Button } from "@/components/ui/button";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import { Button } from "@/components/ui/button";
 
-export default function Home() {
+export default async function HomePage() {
+  // If user is already signed in, redirect to dashboard
+  const { userId } = await auth();
+  
+  if (userId) {
+    redirect("/dashboard");
+  }
+  
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        {/* Hero Section */}
-        <div className="space-y-6 mb-12">
-          <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
-            Master Any Subject with
-            <span className="text-primary"> Flashcards</span>
+    <div className="flex flex-col items-center justify-center min-h-screen px-4">
+      <div className="text-center space-y-8">
+        <div className="space-y-4">
+          <h1 className="text-6xl font-bold tracking-tight">
+            FlashyCardy
           </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Create, organize, and study flashcards efficiently. 
-            FlashyCardyCourse helps you learn smarter, not harder.
+          <p className="text-2xl text-muted-foreground">
+            Your personal flashcard platform
           </p>
         </div>
-
-        {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
+        
+        <div className="flex gap-4 justify-center">
           <SignUpButton mode="modal">
-            <Button 
-              size="lg" 
-              className="w-full sm:w-auto text-lg px-8 py-6 bg-primary hover:bg-green-600 hover:scale-105 transition-all"
-            >
-              Get Started Free
-            </Button>
+            <Button size="lg">Sign Up</Button>
           </SignUpButton>
           <SignInButton mode="modal">
-            <Button 
-              size="lg" 
-              variant="outline" 
-              className="w-full sm:w-auto text-lg px-8 py-6 hover:bg-blue-500/20 hover:border-blue-500 transition-colors"
-            >
-              Sign In
-            </Button>
+            <Button size="lg" variant="outline">Sign In</Button>
           </SignInButton>
-        </div>
-
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-8 mt-16">
-          <div className="p-6 rounded-lg border bg-card">
-            <div className="text-4xl mb-4">📚</div>
-            <h3 className="text-xl font-semibold mb-2">Organize Decks</h3>
-            <p className="text-muted-foreground">
-              Create and manage multiple flashcard decks for different subjects
-            </p>
-          </div>
-          
-          <div className="p-6 rounded-lg border bg-card">
-            <div className="text-4xl mb-4">🧠</div>
-            <h3 className="text-xl font-semibold mb-2">Smart Learning</h3>
-            <p className="text-muted-foreground">
-              Track your progress and focus on what you need to review
-            </p>
-          </div>
-          
-          <div className="p-6 rounded-lg border bg-card">
-            <div className="text-4xl mb-4">🎯</div>
-            <h3 className="text-xl font-semibold mb-2">Study Anywhere</h3>
-            <p className="text-muted-foreground">
-              Access your flashcards from any device, anytime
-            </p>
-          </div>
         </div>
       </div>
     </div>
   );
 }
+

@@ -1,71 +1,68 @@
-import { currentUser } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { getUserDecks } from "@/db/queries/deck-queries";
+import {
+  Card,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import Link from "next/link";
+import { CreateDeckDialog } from "@/components/create-deck-dialog";
 
 export default async function DashboardPage() {
-  const user = await currentUser();
-
+  // Fetch user's decks using query helper - it handles auth & ownership verification
+  let decks;
+  
+  try {
+    decks = await getUserDecks();
+  } catch (error) {
+    // If unauthorized, redirect to home
+    redirect("/");
+  }
+  
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">
-            Welcome back, {user?.firstName}! 👋
-          </h1>
-          <p className="text-muted-foreground">
-            Ready to learn with flashcards?
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h1 className="text-4xl font-bold">My Decks</h1>
+          <p className="text-muted-foreground mt-2">
+            Manage your flashcard decks, or select a deck and start studying
           </p>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Stats Cards */}
-          <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Total Decks</h3>
-            <p className="text-3xl font-bold">0</p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Create your first deck to get started
-            </p>
-          </div>
-
-          <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Cards Studied</h3>
-            <p className="text-3xl font-bold">0</p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Start studying to track progress
-            </p>
-          </div>
-
-          <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-2">Study Streak</h3>
-            <p className="text-3xl font-bold">0 days</p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Study daily to build your streak
-            </p>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="mt-8">
-          <h2 className="text-2xl font-semibold mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-4 px-6 rounded-lg transition-colors text-left">
-              <div className="text-lg font-semibold mb-1">
-                📚 Create New Deck
-              </div>
-              <div className="text-sm opacity-90">
-                Start organizing your flashcards
-              </div>
-            </button>
-
-            <button className="bg-secondary hover:bg-secondary/80 font-medium py-4 px-6 rounded-lg transition-colors text-left">
-              <div className="text-lg font-semibold mb-1">
-                ✏️ Study Mode
-              </div>
-              <div className="text-sm opacity-90">
-                Review your flashcards
-              </div>
-            </button>
-          </div>
-        </div>
+        <CreateDeckDialog />
       </div>
+      
+      {decks.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground text-lg mb-4">
+            You haven't created any decks yet.
+          </p>
+          <CreateDeckDialog />
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 mt-8">
+          {decks.map((deck) => (
+            <Link key={deck.id} href={`/decks/${deck.id}`}>
+              <Card className="hover:shadow-lg transition-shadow flex flex-col min-h-[320px] cursor-pointer">
+                <CardHeader className="flex-grow">
+                  <CardTitle>{deck.name}</CardTitle>
+                  {deck.description && (
+                    <CardDescription className="line-clamp-3 mt-2">
+                      {deck.description}
+                    </CardDescription>
+                  )}
+                </CardHeader>
+                <CardFooter className="mt-auto pt-6">
+                  <p className="text-sm text-muted-foreground">
+                    Updated {new Date(deck.updatedAt).toLocaleDateString()}
+                  </p>
+                </CardFooter>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

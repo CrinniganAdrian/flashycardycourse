@@ -2,14 +2,11 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import {
   ClerkProvider,
-  SignInButton,
-  SignUpButton,
   SignedIn,
-  SignedOut,
   UserButton,
 } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
-import { Button } from "@/components/ui/button";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -30,7 +27,18 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider 
-      appearance={{ baseTheme: dark }}
+      appearance={{ 
+        baseTheme: dark,
+        elements: {
+          formFieldInput__firstName: { display: 'none' },
+          formFieldInput__lastName: { display: 'none' },
+          formFieldLabel__firstName: { display: 'none' },
+          formFieldLabel__lastName: { display: 'none' },
+          formFieldRow__firstName: { display: 'none' },
+          formFieldRow__lastName: { display: 'none' },
+          formFieldRow__name: { display: 'none' },
+        }
+      }}
       signInFallbackRedirectUrl="/dashboard"
       signUpFallbackRedirectUrl="/dashboard"
     >
@@ -40,31 +48,12 @@ export default function RootLayout({
         >
           <header className="flex justify-between items-center p-4 border-b">
             <h1 className="text-xl font-semibold">FlashyCardyCourse</h1>
-            <div className="flex gap-3">
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <Button 
-                    variant="outline" 
-                    className="hover:bg-blue-500/20 hover:border-blue-500 transition-colors"
-                  >
-                    Sign In
-                  </Button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <Button 
-                    variant="default"
-                    className="bg-primary hover:bg-green-600 hover:scale-105 transition-all"
-                  >
-                    Sign Up
-                  </Button>
-                </SignUpButton>
-              </SignedOut>
-              <SignedIn>
-                <UserButton />
-              </SignedIn>
-            </div>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
           </header>
           {children}
+          <Toaster richColors position="top-center" />
         </body>
       </html>
     </ClerkProvider>
