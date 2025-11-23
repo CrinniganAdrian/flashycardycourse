@@ -15,6 +15,7 @@ import { EditCardDialog } from "@/components/edit-card-dialog";
 import { DeleteCardButton } from "@/components/delete-card-button";
 import { EditDeckDialog } from "@/components/edit-deck-dialog";
 import { DeleteDeckDialog } from "@/components/delete-deck-dialog";
+import { AIGenerateButton } from "@/components/ai-generate-button";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -102,7 +103,14 @@ export default async function DeckPage({ params }: PageProps) {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-semibold">Cards</h2>
-          <AddCardDialog deckId={deckId} />
+          <div className="flex gap-2">
+            <AIGenerateButton
+              deckId={deckId}
+              deckName={deck.name}
+              deckDescription={deck.description}
+            />
+            <AddCardDialog deckId={deckId} />
+          </div>
         </div>
         
         {cards.length === 0 ? (

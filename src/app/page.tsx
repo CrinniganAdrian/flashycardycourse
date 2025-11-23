@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import { SignInButton, SignUpButton, SignedOut, SignedIn } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 
 export default async function HomePage() {
@@ -23,14 +23,20 @@ export default async function HomePage() {
           </p>
         </div>
         
-        <div className="flex gap-4 justify-center">
-          <SignUpButton mode="modal">
-            <Button size="lg">Sign Up</Button>
-          </SignUpButton>
-          <SignInButton mode="modal">
-            <Button size="lg" variant="outline">Sign In</Button>
-          </SignInButton>
-        </div>
+        <SignedOut>
+          <div className="flex gap-4 justify-center">
+            <SignUpButton mode="modal">
+              <Button size="lg">Sign Up</Button>
+            </SignUpButton>
+            <SignInButton mode="modal">
+              <Button size="lg" variant="outline">Sign In</Button>
+            </SignInButton>
+          </div>
+        </SignedOut>
+        
+        <SignedIn>
+          <p className="text-muted-foreground">Redirecting to dashboard...</p>
+        </SignedIn>
       </div>
     </div>
   );

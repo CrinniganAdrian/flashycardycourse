@@ -1,0 +1,652 @@
+---
+alwaysApply: true
+---
+# Clerk Billing for FlashyCardyCourse
+
+## Overview
+This application uses **Clerk Billing for B2C SaaS** to manage user subscriptions and feature access. Billing is handled entirely through Clerk, with Stripe used only for payment processing.
+
+> **IMPORTANT**: Billing APIs are in Beta. Consider pinning SDK versions to avoid breaking changes.
+
+## Plans & Features
+
+### Available Plans
+- `free_plan` - Default plan for all users
+- `pro` - Premium subscription plan
+
+### Available Features
+- `3_deck_limit` - Restricts users to 3 decks (included in free_plan)
+- `unlimited_decks` - Allows unlimited decks (included in pro)
+- `ai_flashcard_generation` - AI-powered flashcard generation (included in pro)
+
+## Access Control Patterns
+
+### Core Principle
+Always check plan/feature access **before** allowing users to:
+- Create resources (decks, cards)
+- Access premium features (AI generation)
+- View premium content
+
+### Two Methods for Access Control
+
+#### 1. Using `has()` Method (Server-Side)
+The `has()` method checks if a user has access to a plan or feature. Available on the `auth` object.
+
+```typescript
+import { auth } from "@clerk/nextjs/server";
+
+const { has } = await auth();
+
+// Check for a plan
+const hasPro = has({ plan: 'pro' });
+
+// Check for a feature
+const hasUnlimitedDecks = has({ feature: 'unlimited_decks' });
+```
+
+#### 2. Using `<Protect>` Component (React)
+The `<Protect>` component conditionally renders content based on plan/feature access.
+
+```tsx
+import { Protect } from '@clerk/nextjs';
+
+<Protect
+  feature="ai_flashcard_generation"
+  fallback={<p>Upgrade to Pro to use AI flashcard generation.</p>}
+>
+  <AIGenerateButton />
+</Protect>
+```
+
+## Implementation Patterns
+
+### Pattern 1: Protecting Server Actions
+
+Server Actions MUST verify plan/feature access before performing operations.
+
+#### Example: Deck Creation Limit
+```typescript
+// src/app/actions/deck-actions.ts
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { createDeck as createDeckMutation } from "@/db/queries/deck-mutations";
+import { getUserDeckCount } from "@/db/queries/deck-queries";
+
+export async function createDeck(input: CreateDeckInput): Promise<CreateDeckResult> {
+  try {
+    // 1. Authenticate
+    const { userId, has } = await auth();
+    
+    if (!userId) {
+      return { success: false, error: "Unauthorized" };
+    }
+    
+    // 2. Check plan/feature access
+    const hasUnlimitedDecks = has({ feature: 'unlimited_decks' });
+    
+    if (!hasUnlimitedDecks) {
+      // User is on free plan - check deck limit
+      const deckCount = await getUserDeckCount();
+      
+      if (deckCount >= 3) {
+        return {
+          success: false,
+          error: "Free plan limited to 3 decks. Upgrade to Pro for unlimited decks.",
+        };
+      }
+    }
+    
+    // 3. Validate input with Zod
+    const validationResult = createDeckSchema.safeParse(input);
+    
+    if (!validationResult.success) {
+      return {
+        success: false,
+        error: validationResult.error.errors[0].message,
+      };
+    }
+    
+    const { name, description } = validationResult.data;
+    
+    // 4. Call mutation helper
+    const deck = await createDeckMutation(name, description);
+    
+    // 5. Revalidate
+    revalidatePath("/dashboard");
+    
+    return {
+      success: true,
+      data: { id: deck.id, name: deck.name },
+    };
+  } catch (error) {
+    console.error("Error creating deck:", error);
+    return {
+      success: false,
+      error: "Failed to create deck. Please try again.",
+    };
+  }
+}
+```
+
+#### Example: AI Feature Access
+```typescript
+// src/app/actions/ai-actions.ts
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { z } from "zod";
+
+const generateFlashcardsSchema = z.object({
+  topic: z.string().min(1).max(500),
+  count: z.number().int().min(1).max(50),
+});
+
+type GenerateFlashcardsInput = z.infer<typeof generateFlashcardsSchema>;
+
+type GenerateFlashcardsResult =
+  | { success: true; data: { cards: Array<{ front: string; back: string }> } }
+  | { success: false; error: string };
+
+export async function generateFlashcardsWithAI(
+  input: GenerateFlashcardsInput
+): Promise<GenerateFlashcardsResult> {
+  try {
+    const { userId, has } = await auth();
+    
+    if (!userId) {
+      return { success: false, error: "Unauthorized" };
+    }
+    
+    // Check for AI feature access
+    const hasAIAccess = has({ feature: 'ai_flashcard_generation' });
+    
+    if (!hasAIAccess) {
+      return {
+        success: false,
+        error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+      };
+    }
+    
+    // Validate input
+    const validationResult = generateFlashcardsSchema.safeParse(input);
+    
+    if (!validationResult.success) {
+      return {
+        success: false,
+        error: validationResult.error.errors[0].message,
+      };
+    }
+    
+    // TODO: Implement AI generation logic
+    
+    return {
+      success: true,
+      data: { cards: [] },
+    };
+  } catch (error) {
+    console.error("Error generating flashcards:", error);
+    return {
+      success: false,
+      error: "Failed to generate flashcards. Please try again.",
+    };
+  }
+}
+```
+
+### Pattern 2: Protecting Server Components
+
+Use `has()` to conditionally render content in Server Components.
+
+```tsx
+// src/app/dashboard/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { getUserDecks } from "@/db/queries/deck-queries";
+import { CreateDeckButton } from "@/components/create-deck-button";
+import { UpgradePrompt } from "@/components/upgrade-prompt";
+
+export default async function DashboardPage() {
+  const { userId, has } = await auth();
+  
+  if (!userId) {
+    redirect("/");
+  }
+  
+  const decks = await getUserDecks();
+  const hasUnlimitedDecks = has({ feature: 'unlimited_decks' });
+  
+  // Check if user has reached free plan limit
+  const canCreateMoreDecks = hasUnlimitedDecks || decks.length < 3;
+  
+  return (
+    <div>
+      <h1>My Decks</h1>
+      
+      {canCreateMoreDecks ? (
+        <CreateDeckButton />
+      ) : (
+        <UpgradePrompt
+          message="You've reached the 3 deck limit on the free plan."
+          ctaText="Upgrade to Pro for unlimited decks"
+        />
+      )}
+      
+      {/* Display decks */}
+      {decks.map((deck) => (
+        <div key={deck.id}>{deck.name}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Pattern 3: Protecting Client Components
+
+Use `<Protect>` component to conditionally render UI in Client Components.
+
+#### Example: Feature Toggle
+```tsx
+// src/components/ai-generate-button.tsx
+"use client";
+
+import { Protect } from "@clerk/nextjs";
+import { Button } from "@/components/ui/button";
+import { Sparkles } from "lucide-react";
+
+export function AIGenerateButton() {
+  return (
+    <Protect
+      feature="ai_flashcard_generation"
+      fallback={
+        <Button variant="outline" disabled>
+          <Sparkles className="mr-2 h-4 w-4" />
+          AI Generate (Pro Feature)
+        </Button>
+      }
+    >
+      <Button variant="default" onClick={() => {/* open AI dialog */}}>
+        <Sparkles className="mr-2 h-4 w-4" />
+        AI Generate Flashcards
+      </Button>
+    </Protect>
+  );
+}
+```
+
+#### Example: Conditional UI Elements
+```tsx
+// src/components/deck-list.tsx
+"use client";
+
+import { Protect } from "@clerk/nextjs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Crown } from "lucide-react";
+
+interface DeckListProps {
+  deckCount: number;
+}
+
+export function DeckList({ deckCount }: DeckListProps) {
+  return (
+    <div>
+      {/* Show warning when approaching limit */}
+      <Protect
+        feature="3_deck_limit"
+        fallback={null}
+      >
+        {deckCount >= 2 && (
+          <Alert>
+            <Crown className="h-4 w-4" />
+            <AlertDescription>
+              You're using {deckCount}/3 decks on the free plan.
+              <Button variant="link" className="ml-2">
+                Upgrade to Pro
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+      </Protect>
+      
+      {/* Deck list rendering */}
+    </div>
+  );
+}
+```
+
+### Pattern 4: Protecting Entire Pages
+
+Use `has()` in Server Components to protect entire pages.
+
+```tsx
+// src/app/ai-studio/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+
+export default async function AIStudioPage() {
+  const { userId, has } = await auth();
+  
+  if (!userId) {
+    redirect("/");
+  }
+  
+  const hasAIAccess = has({ feature: 'ai_flashcard_generation' });
+  
+  if (!hasAIAccess) {
+    redirect("/dashboard?upgrade=ai_feature");
+  }
+  
+  return (
+    <div>
+      <h1>AI Flashcard Studio</h1>
+      {/* AI generation UI */}
+    </div>
+  );
+}
+```
+
+## Required Database Queries
+
+### Get Deck Count Query
+Add this query helper to check deck limits:
+
+```typescript
+// src/db/queries/deck-queries.ts
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { eq, sql } from "drizzle-orm";
+
+/**
+ * Get the number of decks for the authenticated user
+ * @returns Number of decks
+ * @throws Error if user is not authenticated
+ */
+export async function getUserDeckCount(): Promise<number> {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+  
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+  
+  return count;
+}
+```
+
+## Pricing Page Setup
+
+Create a dedicated pricing page using the `<PricingTable />` component:
+
+```tsx
+// src/app/pricing/page.tsx
+import { PricingTable } from '@clerk/nextjs';
+
+export default function PricingPage() {
+  return (
+    <div className="container mx-auto max-w-6xl px-4 py-8">
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
+        <p className="text-muted-foreground">
+          Start with our free plan or upgrade to Pro for unlimited decks and AI features
+        </p>
+      </div>
+      
+      <PricingTable />
+    </div>
+  );
+}
+```
+
+## User Profile Integration
+
+The `<UserProfile />` component automatically shows subscription management if billing is enabled:
+
+```tsx
+// src/app/account/page.tsx
+import { UserProfile } from '@clerk/nextjs';
+
+export default function AccountPage() {
+  return (
+    <div className="container mx-auto max-w-4xl px-4 py-8">
+      <UserProfile />
+    </div>
+  );
+}
+```
+
+## Navigation Updates
+
+Update navigation to include pricing link:
+
+```tsx
+// src/components/navigation.tsx
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+
+export function Navigation() {
+  return (
+    <nav>
+      <Link href="/dashboard">
+        <Button variant="ghost">Dashboard</Button>
+      </Link>
+      <Link href="/pricing">
+        <Button variant="ghost">Pricing</Button>
+      </Link>
+      {/* Other nav items */}
+    </nav>
+  );
+}
+```
+
+## Error Messages
+
+Use consistent, user-friendly error messages:
+
+```typescript
+// Deck limit reached
+"Free plan limited to 3 decks. Upgrade to Pro for unlimited decks."
+
+// AI feature not available
+"AI flashcard generation is a Pro feature. Upgrade to access."
+
+// Generic upgrade prompt
+"This feature requires a Pro subscription."
+```
+
+## Best Practices
+
+### 1. Always Check Access in Server Actions
+```typescript
+// ✅ CORRECT - Check access before mutation
+const { has } = await auth();
+const hasFeature = has({ feature: 'unlimited_decks' });
+if (!hasFeature) {
+  return { success: false, error: "Pro feature" };
+}
+
+// ❌ WRONG - No access check
+const deck = await createDeck(name);
+```
+
+### 2. Check Access Early
+Check plan/feature access as early as possible in your functions to avoid unnecessary processing.
+
+```typescript
+// ✅ CORRECT - Check access first
+const { userId, has } = await auth();
+if (!userId) return { success: false, error: "Unauthorized" };
+
+const hasAccess = has({ feature: 'ai_flashcard_generation' });
+if (!hasAccess) return { success: false, error: "Pro feature" };
+
+// Now proceed with expensive operations
+
+// ❌ WRONG - Check access after expensive operations
+const result = await expensiveAICall();
+const { has } = await auth();
+if (!has({ feature: 'ai_flashcard_generation' })) {
+  return { success: false, error: "Pro feature" };
+}
+```
+
+### 3. Use Appropriate Access Control
+- Use **features** to gate specific functionality
+- Use **plans** to gate entire tiers of service
+
+```typescript
+// ✅ CORRECT - Use features for specific functionality
+const hasAI = has({ feature: 'ai_flashcard_generation' });
+
+// ✅ ALSO CORRECT - Use plans for tier checking
+const isPro = has({ plan: 'pro' });
+
+// Choose based on your use case
+```
+
+### 4. Provide Upgrade CTAs
+Always guide users to upgrade when they hit limitations:
+
+```tsx
+// ✅ CORRECT - Clear upgrade path
+<Alert>
+  <AlertDescription>
+    You've reached the free plan limit.
+    <Button asChild variant="link">
+      <Link href="/pricing">Upgrade to Pro</Link>
+    </Button>
+  </AlertDescription>
+</Alert>
+
+// ❌ WRONG - Just block without guidance
+<Alert>
+  <AlertDescription>
+    Feature not available.
+  </AlertDescription>
+</Alert>
+```
+
+### 5. Handle Edge Cases
+```typescript
+// Handle when billing isn't loaded yet
+const { has } = await auth();
+
+// has() returns false if billing isn't loaded or user doesn't have access
+// Always provide a fallback
+const hasAccess = has({ feature: 'unlimited_decks' });
+
+if (!hasAccess) {
+  // Could be: not loaded, no subscription, or wrong plan
+  // Provide helpful error message
+}
+```
+
+## Security Checklist
+
+Before shipping billing features:
+
+- [ ] All Server Actions check plan/feature access
+- [ ] Deck creation enforces 3 deck limit for free users
+- [ ] AI features are protected behind `ai_flashcard_generation` feature
+- [ ] Premium pages redirect unauthorized users
+- [ ] Client components use `<Protect>` for UI elements
+- [ ] Error messages guide users to upgrade
+- [ ] Pricing page is accessible and functional
+- [ ] UserProfile shows subscription management
+
+## Testing Billing
+
+### Development Testing
+1. Use the Clerk development gateway (shared Stripe test account)
+2. Test free plan limitations (3 deck limit)
+3. Test Pro plan features (unlimited decks, AI)
+4. Test upgrade/downgrade flows
+5. Verify access control works correctly
+
+### Production Checklist
+- [ ] Configure your own Stripe account (separate from development)
+- [ ] Test subscription flows in production
+- [ ] Monitor billing errors and edge cases
+- [ ] Set up webhooks for subscription events (if needed)
+
+## Common Patterns Summary
+
+```typescript
+// Server Action Pattern
+export async function serverAction() {
+  const { userId, has } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+  
+  const hasAccess = has({ feature: 'feature_name' });
+  if (!hasAccess) return { success: false, error: "Pro feature" };
+  
+  // Proceed with action
+}
+
+// Server Component Pattern
+export default async function Page() {
+  const { userId, has } = await auth();
+  if (!userId) redirect("/");
+  
+  const hasAccess = has({ feature: 'feature_name' });
+  
+  return (
+    <div>
+      {hasAccess ? <PremiumContent /> : <UpgradePrompt />}
+    </div>
+  );
+}
+
+// Client Component Pattern
+<Protect
+  feature="feature_name"
+  fallback={<UpgradePrompt />}
+>
+  <PremiumContent />
+</Protect>
+```
+
+## Integration with Existing Patterns
+
+Billing checks should be integrated with existing security patterns:
+
+```typescript
+// Combined auth + billing check
+export async function createDeck(input: CreateDeckInput) {
+  // 1. Authenticate (existing pattern)
+  const { userId, has } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+  
+  // 2. Check billing access (new pattern)
+  const hasUnlimitedDecks = has({ feature: 'unlimited_decks' });
+  if (!hasUnlimitedDecks) {
+    const count = await getUserDeckCount();
+    if (count >= 3) {
+      return { success: false, error: "Upgrade for unlimited decks" };
+    }
+  }
+  
+  // 3. Validate with Zod (existing pattern)
+  const validation = createDeckSchema.safeParse(input);
+  if (!validation.success) {
+    return { success: false, error: validation.error.errors[0].message };
+  }
+  
+  // 4. Call mutation helper (existing pattern)
+  const deck = await createDeckMutation(name, description);
+  
+  // 5. Revalidate (existing pattern)
+  revalidatePath("/dashboard");
+  
+  return { success: true, data: deck };
+}
+```
+
+---
+
+**Remember: Always check billing access in Server Actions before performing operations that are gated by plans or features.**

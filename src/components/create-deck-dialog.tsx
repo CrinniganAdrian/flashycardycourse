@@ -26,12 +26,20 @@ export function CreateDeckDialog() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Validate that name is not empty (trimmed)
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      toast.error("Deck name is required");
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
       const result = await createDeck({ 
-        name, 
-        description: description || undefined 
+        name: trimmedName, 
+        description: description.trim() || null 
       });
 
       if (!result.success) {

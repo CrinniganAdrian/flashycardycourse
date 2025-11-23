@@ -36,13 +36,21 @@ export function EditDeckDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Validate that name is not empty (trimmed)
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      toast.error("Deck name cannot be empty. If you want to remove this deck, please use the Delete button.");
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
       const result = await updateDeck({ 
         deckId, 
-        name, 
-        description: description || undefined 
+        name: trimmedName, 
+        description: description.trim() || null 
       });
 
       if (!result.success) {

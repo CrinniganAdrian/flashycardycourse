@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/db";
 import { decksTable } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import type { Deck } from "./types";
 
 /**
@@ -48,5 +48,25 @@ export async function getDeckById(deckId: number): Promise<Deck | null> {
     .limit(1);
   
   return deck ?? null;
+}
+
+/**
+ * Get the number of decks for the authenticated user
+ * @returns Number of decks
+ * @throws Error if user is not authenticated
+ */
+export async function getUserDeckCount(): Promise<number> {
+  const { userId } = await auth();
+  
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+  
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+  
+  return count;
 }
 

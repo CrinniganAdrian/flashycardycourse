@@ -1,0 +1,1047 @@
+---
+alwaysApply: true
+---
+# Vercel AI SDK Integration for Flashcard Generation
+
+## 🔒 CRITICAL: AI Generation is a Premium Feature
+
+**AI flashcard generation is EXCLUSIVELY available to Pro subscribers.**
+
+### Billing Requirements
+- **Plan**: `pro`
+- **Feature**: `ai_flashcard_generation`
+- **Access Control**: MUST check `has({ feature: 'ai_flashcard_generation' })` before ANY AI generation
+- **Unauthorized Access**: Return error and prompt user to upgrade
+
+### Quick Checklist
+Before implementing ANY AI generation feature:
+- [ ] Is user authenticated? (`const { userId } = await auth()`)
+- [ ] Does user have Pro access? (`has({ feature: "ai_flashcard_generation" })`)
+- [ ] Is input validated with Zod?
+- [ ] Are error messages guiding users to upgrade?
+- [ ] Is UI protected with `<Protect>` component?
+- [ ] Is feature only accessible in Server Actions?
+
+### Security Pattern (ALWAYS REQUIRED)
+```typescript
+// ALWAYS check BOTH authentication AND billing
+const { userId, has } = await auth();
+
+// Step 1: Check authentication
+if (!userId) {
+  return { success: false, error: "Unauthorized" };
+}
+
+// Step 2: Check Pro feature access (CRITICAL)
+const hasAIAccess = has({ feature: "ai_flashcard_generation" });
+
+if (!hasAIAccess) {
+  return {
+    success: false,
+    error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+  };
+}
+
+// Only NOW proceed with AI generation
+```
+
+### Why This Matters
+- **Security**: Prevents unauthorized access to paid features
+- **Revenue Protection**: Ensures only paying users access AI generation
+- **Cost Control**: OpenAI API calls are expensive - must gate access
+- **User Experience**: Clear upgrade path for free users
+- **Compliance**: Proper billing enforcement for SaaS business model
+
+## Overview
+This project uses the **Vercel AI SDK** (npm package `ai`) to generate AI-powered flashcards using OpenAI's models. The `generateObject` function is used to create structured flashcard data with type-safe schemas.
+
+**IMPORTANT**: All AI generation functions MUST verify Pro subscription access before calling OpenAI APIs.
+
+## Billing Integration with Clerk
+
+### Premium Feature Access Control
+AI flashcard generation is gated behind Clerk Billing. Users must have:
+- **Active Pro subscription** OR
+- **Access to `ai_flashcard_generation` feature**
+
+### Two-Step Verification (MANDATORY)
+Every AI generation function MUST perform:
+
+1. **Authentication Check**: Verify user is logged in
+   ```typescript
+   const { userId } = await auth();
+   if (!userId) return { success: false, error: "Unauthorized" };
+   ```
+
+2. **Billing Check**: Verify Pro feature access
+   ```typescript
+   const hasAIAccess = has({ feature: "ai_flashcard_generation" });
+   if (!hasAIAccess) {
+     return {
+       success: false,
+       error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+     };
+   }
+   ```
+
+### Upgrade Prompts
+When users without Pro access attempt to use AI features:
+- Return clear error message mentioning Pro subscription
+- Provide upgrade CTA in UI components
+- Link to `/pricing` page
+
+## Installation
+
+### Required Packages
+```bash
+npm install ai
+npm install @ai-sdk/openai
+npm install zod  # Already installed for validation
+```
+
+### Environment Variables
+Add to `.env.local`:
+```env
+OPENAI_API_KEY=sk-...
+```
+
+### Clerk Billing Configuration
+Ensure these are configured in Clerk Dashboard:
+- **Plan**: `pro` - Premium subscription plan
+- **Feature**: `ai_flashcard_generation` - AI generation feature flag
+- Pricing table includes AI feature in Pro plan
+
+## Core Pattern: Structured Flashcard Generation
+
+### Zod Schema for Flashcards
+Define the schema for flashcard generation:
+
+```typescript
+import { z } from "zod";
+
+// Schema for a single flashcard
+const flashcardSchema = z.object({
+  front: z.string().min(1).max(5000),
+  back: z.string().min(1).max(5000),
+});
+
+// Schema for multiple flashcards
+const flashcardsResponseSchema = z.object({
+  cards: z.array(flashcardSchema),
+});
+
+// TypeScript types
+type Flashcard = z.infer<typeof flashcardSchema>;
+type FlashcardsResponse = z.infer<typeof flashcardsResponseSchema>;
+```
+
+### Generate Flashcards with OpenAI
+Use the `generateObject` function to create structured flashcard data:
+
+```typescript
+import { generateObject } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const flashcardsResponseSchema = z.object({
+  cards: z.array(
+    z.object({
+      front: z.string().min(1).max(5000),
+      back: z.string().min(1).max(5000),
+    })
+  ),
+});
+
+async function generateFlashcardsWithAI(
+  topic: string,
+  count: number
+): Promise<Array<{ front: string; back: string }>> {
+  const { object } = await generateObject({
+    model: openai("gpt-4o"),
+    schema: flashcardsResponseSchema,
+    prompt: `Generate ${count} educational flashcards about "${topic}". 
+    Each flashcard should have:
+    - front: A clear, concise question or prompt
+    - back: A comprehensive answer or explanation
+    
+    Make the flashcards educational, accurate, and appropriate for learning.`,
+  });
+
+  return object.cards;
+}
+```
+
+## Server Action Implementation
+
+### Complete AI Flashcard Generation Action
+Following the project's server action patterns with Clerk billing integration:
+
+```typescript
+// src/app/actions/ai-actions.ts
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { generateObject } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+// Input validation schema
+const generateFlashcardsInputSchema = z.object({
+  topic: z
+    .string()
+    .min(1, "Topic is required")
+    .max(500, "Topic must be 500 characters or less")
+    .trim(),
+  count: z
+    .number()
+    .int()
+    .min(1, "Must generate at least 1 card")
+    .max(50, "Cannot generate more than 50 cards at once"),
+  deckId: z.number().int().positive().optional(),
+});
+
+type GenerateFlashcardsInput = z.infer<typeof generateFlashcardsInputSchema>;
+
+// AI response schema
+const flashcardsResponseSchema = z.object({
+  cards: z.array(
+    z.object({
+      front: z.string(),
+      back: z.string(),
+    })
+  ),
+});
+
+// Result type
+type GenerateFlashcardsResult =
+  | {
+      success: true;
+      data: {
+        cards: Array<{ front: string; back: string }>;
+      };
+    }
+  | { success: false; error: string };
+
+export async function generateFlashcardsWithAI(
+  input: GenerateFlashcardsInput
+): Promise<GenerateFlashcardsResult> {
+  try {
+    // 1. Authenticate
+    const { userId, has } = await auth();
+
+    if (!userId) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    // 2. Check for AI feature access (Pro plan required)
+    const hasAIAccess = has({ feature: "ai_flashcard_generation" });
+
+    if (!hasAIAccess) {
+      return {
+        success: false,
+        error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+      };
+    }
+
+    // 3. Validate input
+    const validationResult = generateFlashcardsInputSchema.safeParse(input);
+
+    if (!validationResult.success) {
+      return {
+        success: false,
+        error: validationResult.error.errors[0].message,
+      };
+    }
+
+    const { topic, count, deckId } = validationResult.data;
+
+    // 4. If deckId provided, verify ownership
+    if (deckId) {
+      const { getDeckById } = await import("@/db/queries/deck-queries");
+      const deck = await getDeckById(deckId);
+
+      if (!deck) {
+        return { success: false, error: "Deck not found" };
+      }
+    }
+
+    // 5. Generate flashcards with AI
+    const { object } = await generateObject({
+      model: openai("gpt-4o"),
+      schema: flashcardsResponseSchema,
+      prompt: `Generate ${count} educational flashcards about "${topic}".
+
+Each flashcard should have:
+- front: A clear, concise question or prompt (keep it under 200 characters if possible)
+- back: A comprehensive answer or explanation (aim for 100-500 characters)
+
+Make the flashcards:
+- Educational and accurate
+- Progressive in difficulty (start easier, get harder)
+- Clear and unambiguous
+- Appropriate for self-study and learning
+- Focused on key concepts and important details
+
+Generate exactly ${count} flashcards.`,
+    });
+
+    // 6. Validate AI response
+    if (!object.cards || object.cards.length === 0) {
+      return {
+        success: false,
+        error: "Failed to generate flashcards. Please try again.",
+      };
+    }
+
+    // 7. If deckId provided, save cards to deck
+    if (deckId) {
+      const { createCard } = await import("@/db/queries/card-mutations");
+      const { revalidatePath } = await import("next/cache");
+
+      for (const card of object.cards) {
+        await createCard(deckId, card.front, card.back);
+      }
+
+      revalidatePath(`/decks/${deckId}`);
+    }
+
+    // 8. Return generated cards
+    return {
+      success: true,
+      data: { cards: object.cards },
+    };
+  } catch (error) {
+    console.error("Error generating flashcards with AI:", error);
+
+    // Handle specific error types
+    if (error instanceof Error) {
+      if (error.message === "Unauthorized") {
+        return { success: false, error: "Unauthorized" };
+      }
+
+      if (error.message.includes("API key")) {
+        return {
+          success: false,
+          error: "AI service configuration error. Please contact support.",
+        };
+      }
+    }
+
+    return {
+      success: false,
+      error: "Failed to generate flashcards. Please try again.",
+    };
+  }
+}
+```
+
+## Alternative: Generate Without Saving
+
+For previewing flashcards before saving:
+
+```typescript
+// src/app/actions/ai-actions.ts
+"use server";
+
+export async function previewFlashcardsWithAI(
+  input: Pick<GenerateFlashcardsInput, "topic" | "count">
+): Promise<GenerateFlashcardsResult> {
+  try {
+    const { userId, has } = await auth();
+
+    if (!userId) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const hasAIAccess = has({ feature: "ai_flashcard_generation" });
+
+    if (!hasAIAccess) {
+      return {
+        success: false,
+        error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+      };
+    }
+
+    const validationResult = generateFlashcardsInputSchema
+      .pick({ topic: true, count: true })
+      .safeParse(input);
+
+    if (!validationResult.success) {
+      return {
+        success: false,
+        error: validationResult.error.errors[0].message,
+      };
+    }
+
+    const { topic, count } = validationResult.data;
+
+    const { object } = await generateObject({
+      model: openai("gpt-4o"),
+      schema: flashcardsResponseSchema,
+      prompt: `Generate ${count} educational flashcards about "${topic}".
+
+Each flashcard should have:
+- front: A clear, concise question or prompt
+- back: A comprehensive answer or explanation
+
+Make the flashcards educational, accurate, and appropriate for learning.`,
+    });
+
+    return {
+      success: true,
+      data: { cards: object.cards },
+    };
+  } catch (error) {
+    console.error("Error previewing flashcards:", error);
+    return {
+      success: false,
+      error: "Failed to generate flashcards. Please try again.",
+    };
+  }
+}
+```
+
+## Client Component Integration
+
+### UI-Level Protection with `<Protect>`
+
+**IMPORTANT**: Always use Clerk's `<Protect>` component to conditionally render AI features in the UI. This provides a seamless user experience by hiding premium features from free users and showing upgrade prompts.
+
+```typescript
+import { Protect } from "@clerk/nextjs";
+import { UpgradePrompt } from "@/components/upgrade-prompt";
+
+// ✅ CORRECT - UI protection for Pro features
+<Protect
+  feature="ai_flashcard_generation"
+  fallback={
+    <UpgradePrompt
+      message="AI flashcard generation is a Pro feature"
+      ctaText="Upgrade to Pro for AI-powered flashcards"
+    />
+  }
+>
+  <AIGenerateButton />
+</Protect>
+
+// ❌ WRONG - No UI protection
+<AIGenerateButton /> // Free users will see button but get error on click
+```
+
+### AI Generation Dialog Component
+
+```typescript
+// src/components/ai-generate-dialog.tsx
+"use client";
+
+import { useState } from "react";
+import { Protect } from "@clerk/nextjs";
+import { Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { generateFlashcardsWithAI } from "@/app/actions/ai-actions";
+import { UpgradePrompt } from "@/components/upgrade-prompt";
+
+interface AIGenerateDialogProps {
+  deckId?: number;
+  onCardsGenerated?: () => void;
+}
+
+export function AIGenerateDialog({
+  deckId,
+  onCardsGenerated,
+}: AIGenerateDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [count, setCount] = useState(10);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const result = await generateFlashcardsWithAI({
+        topic,
+        count,
+        deckId,
+      });
+
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+
+      // Success
+      setOpen(false);
+      setTopic("");
+      setCount(10);
+      onCardsGenerated?.();
+    } catch (err) {
+      setError("An unexpected error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <Protect
+      feature="ai_flashcard_generation"
+      fallback={
+        <UpgradePrompt
+          message="AI flashcard generation is a Pro feature"
+          ctaText="Upgrade to Pro"
+        />
+      }
+    >
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button variant="default">
+            <Sparkles className="mr-2 h-4 w-4" />
+            Generate with AI
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Flashcards with AI</DialogTitle>
+            <DialogDescription>
+              Use AI to automatically generate flashcards on any topic.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="topic">Topic</Label>
+              <Input
+                id="topic"
+                placeholder="e.g., React Hooks, World War 2, Spanish Verbs"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="count">Number of Cards</Label>
+              <Input
+                id="count"
+                type="number"
+                min={1}
+                max={50}
+                value={count}
+                onChange={(e) => setCount(parseInt(e.target.value) || 10)}
+                disabled={isLoading}
+              />
+            </div>
+
+            {error && (
+              <div className="text-sm text-red-600" role="alert">
+                {error}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleGenerate} disabled={isLoading || !topic}>
+                {isLoading ? "Generating..." : "Generate"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Protect>
+  );
+}
+```
+
+## Model Options
+
+### Available OpenAI Models
+```typescript
+import { openai } from "@ai-sdk/openai";
+
+// Recommended models for flashcard generation
+const models = {
+  fast: openai("gpt-4o-mini"), // Faster, cheaper, good quality
+  balanced: openai("gpt-4o"), // Best balance (recommended)
+  advanced: openai("gpt-4-turbo"), // More capable, slower
+};
+```
+
+### Choosing the Right Model
+- **gpt-4o-mini**: Fast and cost-effective for simple flashcards
+- **gpt-4o**: Best balance of quality, speed, and cost (recommended)
+- **gpt-4-turbo**: Use for complex topics requiring deeper understanding
+
+## Prompt Engineering Best Practices
+
+### Effective Prompts for Flashcards
+
+```typescript
+// Good: Specific and structured
+const prompt = `Generate ${count} flashcards about "${topic}".
+
+Format each flashcard as:
+- front: A clear question starting with Who, What, When, Where, Why, or How
+- back: A concise answer in 1-3 sentences
+
+Focus on key facts, definitions, and important concepts.
+Make questions specific and answerable.`;
+
+// Better: Include examples
+const promptWithExample = `Generate ${count} flashcards about "${topic}".
+
+Example flashcard:
+Front: "What is the capital of France?"
+Back: "Paris is the capital and largest city of France, located in the north-central part of the country."
+
+Create flashcards that:
+- Ask clear, specific questions
+- Provide accurate, educational answers
+- Progress from basic to advanced concepts
+- Are appropriate for self-study`;
+```
+
+### Topic-Specific Prompts
+
+```typescript
+// For language learning
+const languagePrompt = `Generate ${count} flashcards for learning ${topic}.
+Front: A word or phrase in English
+Back: Translation, pronunciation guide, and example usage`;
+
+// For historical events
+const historyPrompt = `Generate ${count} flashcards about ${topic}.
+Front: A question about dates, people, or events
+Back: Detailed answer with context`;
+
+// For technical concepts
+const technicalPrompt = `Generate ${count} flashcards about ${topic}.
+Front: A concept, term, or question
+Back: Clear explanation with examples or use cases`;
+```
+
+## Error Handling
+
+### Common Errors and Solutions
+
+```typescript
+try {
+  const result = await generateObject({ ... });
+} catch (error) {
+  if (error instanceof Error) {
+    // Rate limit error
+    if (error.message.includes("rate limit")) {
+      return {
+        success: false,
+        error: "Too many requests. Please try again in a moment.",
+      };
+    }
+
+    // Invalid API key
+    if (error.message.includes("API key")) {
+      return {
+        success: false,
+        error: "AI service configuration error.",
+      };
+    }
+
+    // Timeout
+    if (error.message.includes("timeout")) {
+      return {
+        success: false,
+        error: "Request timed out. Please try with fewer cards.",
+      };
+    }
+  }
+
+  // Generic error
+  return {
+    success: false,
+    error: "Failed to generate flashcards. Please try again.",
+  };
+}
+```
+
+## Testing
+
+### Test Billing Access Control
+
+**CRITICAL**: Test both free and Pro user scenarios to ensure billing gates work correctly.
+
+#### Test Scenario 1: Free User (Should Be Blocked)
+1. Create or use a free plan account (no Pro subscription)
+2. Attempt to access AI generation feature
+3. **Expected Result**:
+   - UI shows upgrade prompt (not AI button)
+   - If server action is called directly, returns error
+   - Error message: "AI flashcard generation is a Pro feature. Upgrade to access."
+
+#### Test Scenario 2: Pro User (Should Have Access)
+1. Upgrade account to Pro plan in Clerk Dashboard (development mode)
+2. Attempt to access AI generation feature
+3. **Expected Result**:
+   - UI shows AI generation button
+   - Server action successfully generates flashcards
+   - Cards are created and saved to database
+
+#### Manual Testing Checklist
+- [ ] Free user sees `<Protect>` fallback (upgrade prompt)
+- [ ] Pro user sees AI generation button
+- [ ] Free user server action returns billing error
+- [ ] Pro user server action successfully generates cards
+- [ ] Error messages guide users to `/pricing` page
+- [ ] Upgrade flow works correctly
+
+### Test AI Generation in Development
+
+**Note**: This test endpoint should ONLY be used in development and MUST include billing checks in production.
+
+```typescript
+// src/app/api/test-ai/route.ts (DEVELOPMENT ONLY)
+import { auth } from "@clerk/nextjs/server";
+import { generateObject } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  try {
+    // CRITICAL: Include auth + billing check even in test endpoint
+    const { userId, has } = await auth();
+    
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    // Check Pro access
+    const hasAIAccess = has({ feature: "ai_flashcard_generation" });
+    
+    if (!hasAIAccess) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+        },
+        { status: 403 }
+      );
+    }
+    
+    // Now safe to test AI generation
+    const { object } = await generateObject({
+      model: openai("gpt-4o"),
+      schema: z.object({
+        cards: z.array(
+          z.object({
+            front: z.string(),
+            back: z.string(),
+          })
+        ),
+      }),
+      prompt: "Generate 3 flashcards about React hooks.",
+    });
+
+    return NextResponse.json({ success: true, data: object });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { success: false, error: "Failed" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Testing in Clerk Dashboard
+
+#### Grant Pro Access for Testing
+1. Go to Clerk Dashboard → Billing
+2. Select a test user
+3. Manually assign Pro plan or `ai_flashcard_generation` feature
+4. Test AI generation works
+5. Remove access and verify feature is blocked
+
+#### Development Gateway
+- Clerk provides a shared Stripe test account in development
+- Use test credit cards to simulate subscriptions
+- Test upgrade and downgrade flows
+
+## Cost Optimization
+
+### Reduce API Costs
+
+1. **Use gpt-4o-mini for most cases**
+   - 60% cheaper than gpt-4o
+   - Good quality for educational content
+
+2. **Limit flashcard count**
+   - Set maximum to 50 cards per generation
+   - Encourage users to generate in smaller batches
+
+3. **Cache common topics** (optional)
+   - Store generated flashcards for popular topics
+   - Reduce redundant API calls
+
+4. **Implement rate limiting**
+   ```typescript
+   // Limit users to X generations per hour
+   const MAX_GENERATIONS_PER_HOUR = 10;
+   ```
+
+## Security Checklist
+
+Before deploying AI features:
+
+### Critical Checks (MUST HAVE)
+- [ ] **Billing check** `has({ feature: 'ai_flashcard_generation' })` is present in EVERY AI function
+- [ ] **Authentication check** `const { userId } = await auth()` is present
+- [ ] **Pro subscription required** - Error message directs free users to upgrade
+- [ ] **Environment variable** `OPENAI_API_KEY` is set and secured
+
+### Additional Security
+- [ ] Input validation with Zod is implemented
+- [ ] Error messages don't expose API keys or internal details
+- [ ] Rate limiting is considered for production
+- [ ] User ownership is verified for deck operations
+- [ ] Costs are monitored and limited
+- [ ] API usage is logged for abuse detection
+
+## Prohibited Practices
+
+### ❌ NEVER: Skip Billing Check
+```typescript
+// ❌ WRONG - No billing verification
+export async function generateFlashcardsWithAI(input: Input) {
+  const { userId } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+  
+  // MISSING BILLING CHECK - Free users can access AI!
+  const { object } = await generateObject({ ... });
+}
+```
+
+### ❌ NEVER: Client-Side AI Generation
+```typescript
+// ❌ WRONG - AI generation in client component
+"use client";
+export function Component() {
+  const handleGenerate = async () => {
+    const result = await generateObject({ ... }); // NEVER!
+  };
+}
+```
+
+### ❌ NEVER: Expose API Keys
+```typescript
+// ❌ WRONG - API key in client component
+"use client";
+const apiKey = process.env.OPENAI_API_KEY; // NEVER!
+```
+
+### ❌ NEVER: Trust Client Billing Status
+```typescript
+// ❌ WRONG - Billing check in client component
+"use client";
+export function Component({ isPro }: { isPro: boolean }) {
+  if (isPro) {
+    // Client-side billing check is NOT secure
+    await generateFlashcards(...);
+  }
+}
+```
+
+### ✅ CORRECT: Server-Side with Full Verification
+```typescript
+// ✅ CORRECT - Server action with auth + billing
+"use server";
+export async function generateFlashcardsWithAI(input: Input) {
+  const { userId, has } = await auth();
+  
+  // Step 1: Auth check
+  if (!userId) return { success: false, error: "Unauthorized" };
+  
+  // Step 2: Billing check (CRITICAL)
+  if (!has({ feature: "ai_flashcard_generation" })) {
+    return { success: false, error: "Pro feature. Upgrade to access." };
+  }
+  
+  // Step 3: Generate
+  const { object } = await generateObject({ ... });
+  return { success: true, data: object };
+}
+```
+
+## Integration with Existing Patterns
+
+### Follows Project Patterns
+- ✅ **Clerk Authentication**: `await auth()` for user identity
+- ✅ **Clerk Billing**: `has({ feature: 'ai_flashcard_generation' })` for Pro access
+- ✅ Server Actions in `src/app/actions/`
+- ✅ Zod validation for all inputs
+- ✅ Type-safe result objects
+- ✅ Proper error handling
+- ✅ Uses query/mutation helpers from `@/db/queries/`
+- ✅ Revalidates paths after mutations
+- ✅ `<Protect>` component for client-side UI gating
+
+### Billing Integration Flow
+```typescript
+// Complete flow for AI generation with billing
+export async function generateFlashcardsWithAI(input: Input) {
+  // 1. AUTHENTICATION (Clerk)
+  const { userId, has } = await auth();
+  if (!userId) return { success: false, error: "Unauthorized" };
+  
+  // 2. BILLING CHECK (Clerk - CRITICAL)
+  const hasAIAccess = has({ feature: "ai_flashcard_generation" });
+  if (!hasAIAccess) {
+    return {
+      success: false,
+      error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+    };
+  }
+  
+  // 3. INPUT VALIDATION (Zod)
+  const validation = schema.safeParse(input);
+  if (!validation.success) {
+    return { success: false, error: validation.error.errors[0].message };
+  }
+  
+  // 4. OWNERSHIP VERIFICATION (if deckId provided)
+  if (deckId) {
+    const deck = await getDeckById(deckId);
+    if (!deck) return { success: false, error: "Deck not found" };
+  }
+  
+  // 5. AI GENERATION (Vercel AI SDK)
+  const { object } = await generateObject({
+    model: openai("gpt-4o"),
+    schema: flashcardsResponseSchema,
+    prompt: `Generate ${count} flashcards about "${topic}".`,
+  });
+  
+  // 6. SAVE TO DATABASE (if deckId provided)
+  if (deckId) {
+    for (const card of object.cards) {
+      await createCard(deckId, card.front, card.back);
+    }
+    revalidatePath(`/decks/${deckId}`);
+  }
+  
+  // 7. RETURN SUCCESS
+  return { success: true, data: { cards: object.cards } };
+}
+```
+
+## Quick Reference
+
+### Import Statement
+```typescript
+import { generateObject } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+```
+
+### Basic Pattern
+```typescript
+const { object } = await generateObject({
+  model: openai("gpt-4o"),
+  schema: z.object({
+    cards: z.array(
+      z.object({
+        front: z.string(),
+        back: z.string(),
+      })
+    ),
+  }),
+  prompt: `Generate ${count} flashcards about "${topic}".`,
+});
+```
+
+### Complete Server Action Template
+See "Server Action Implementation" section above for full template.
+
+---
+
+## Summary: Critical Requirements
+
+### 🔒 Mandatory Checks (NO EXCEPTIONS)
+
+1. **Authentication Check**
+   ```typescript
+   const { userId, has } = await auth();
+   if (!userId) return { success: false, error: "Unauthorized" };
+   ```
+
+2. **Billing Check (PREMIUM FEATURE)**
+   ```typescript
+   const hasAIAccess = has({ feature: "ai_flashcard_generation" });
+   if (!hasAIAccess) {
+     return {
+       success: false,
+       error: "AI flashcard generation is a Pro feature. Upgrade to access.",
+     };
+   }
+   ```
+
+3. **Input Validation**
+   ```typescript
+   const validation = schema.safeParse(input);
+   if (!validation.success) {
+     return { success: false, error: validation.error.errors[0].message };
+   }
+   ```
+
+### Premium Feature Details
+- **Feature Name**: `ai_flashcard_generation`
+- **Required Plan**: `pro`
+- **Free Plan Access**: ❌ NO (must upgrade)
+- **Pro Plan Access**: ✅ YES
+- **Upgrade Path**: Direct users to `/pricing` page
+
+### Client-Side UI Protection
+Always wrap AI features with `<Protect>` component:
+
+```typescript
+<Protect
+  feature="ai_flashcard_generation"
+  fallback={
+    <UpgradePrompt
+      message="AI flashcard generation is a Pro feature"
+      ctaText="Upgrade to Pro"
+    />
+  }
+>
+  <AIGenerateButton />
+</Protect>
+```
+
+### Error Messages for Unauthorized Access
+Use consistent error messages that guide users to upgrade:
+
+- "AI flashcard generation is a Pro feature. Upgrade to access."
+- "This feature requires a Pro subscription."
+- "Upgrade to Pro for AI-powered flashcard generation."
+
+---
+
+**🚨 CRITICAL: AI flashcard generation is a PREMIUM feature. ALWAYS verify Pro subscription access with `has({ feature: 'ai_flashcard_generation' })` before ANY AI generation. NO EXCEPTIONS. 🚨**

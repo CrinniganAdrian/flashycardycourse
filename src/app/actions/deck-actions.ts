@@ -6,6 +6,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/db";
 import { decksTable } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getUserDeckCount } from "@/db/queries/deck-queries";
 
 // ============================================================================
 // ZOD SCHEMAS
@@ -21,6 +22,7 @@ const createDeckSchema = z.object({
     .string()
     .max(1000, "Description must be 1000 characters or less")
     .trim()
+    .nullable()
     .optional(),
 });
 
@@ -35,6 +37,7 @@ const updateDeckSchema = z.object({
     .string()
     .max(1000, "Description must be 1000 characters or less")
     .trim()
+    .nullable()
     .optional(),
 });
 
@@ -77,10 +80,25 @@ export async function createDeck(
 ): Promise<CreateDeckResult> {
   try {
     // Authenticate
-    const { userId } = await auth();
+    const { userId, has } = await auth();
     
     if (!userId) {
       return { success: false, error: "Unauthorized" };
+    }
+    
+    // Check plan/feature access
+    const hasUnlimitedDecks = has({ feature: 'unlimited_decks' });
+    
+    if (!hasUnlimitedDecks) {
+      // User is on free plan - check deck limit
+      const deckCount = await getUserDeckCount();
+      
+      if (deckCount >= 3) {
+        return {
+          success: false,
+          error: "Free plan limited to 3 decks. Upgrade to Pro for unlimited decks.",
+        };
+      }
     }
     
     // Validate input

@@ -7,6 +7,8 @@ import {
 } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { Toaster } from "sonner";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -47,7 +49,21 @@ export default function RootLayout({
           className={`${poppins.variable} antialiased`}
         >
           <header className="flex justify-between items-center p-4 border-b">
-            <h1 className="text-xl font-semibold">FlashyCardyCourse</h1>
+            <div className="flex items-center gap-6">
+              <Link href="/">
+                <h1 className="text-xl font-semibold">FlashyCardyCourse</h1>
+              </Link>
+              <nav className="flex gap-2">
+                <SignedIn>
+                  <Link href="/dashboard">
+                    <Button variant="ghost">Dashboard</Button>
+                  </Link>
+                </SignedIn>
+                <Link href="/pricing">
+                  <Button variant="ghost">Pricing</Button>
+                </Link>
+              </nav>
+            </div>
             <SignedIn>
               <UserButton />
             </SignedIn>
