@@ -22,7 +22,7 @@ export default async function StudyPage({ params }: PageProps) {
   let deck;
   try {
     deck = await getDeckById(deckId);
-  } catch (error) {
+  } catch {
     // If unauthorized, redirect to home
     redirect("/");
   }
@@ -36,7 +36,7 @@ export default async function StudyPage({ params }: PageProps) {
   let cards;
   try {
     cards = await getCardsByDeckId(deckId);
-  } catch (error) {
+  } catch {
     // If there's an error fetching cards, redirect
     redirect("/");
   }

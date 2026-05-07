@@ -34,7 +34,7 @@ export default async function DeckPage({ params }: PageProps) {
   let deck;
   try {
     deck = await getDeckById(deckId);
-  } catch (error) {
+  } catch {
     // If unauthorized, redirect to home
     redirect("/");
   }
@@ -48,7 +48,7 @@ export default async function DeckPage({ params }: PageProps) {
   let cards;
   try {
     cards = await getCardsByDeckId(deckId);
-  } catch (error) {
+  } catch {
     // If there's an error fetching cards, redirect
     redirect("/");
   }
@@ -117,7 +117,7 @@ export default async function DeckPage({ params }: PageProps) {
           <Card className="text-center py-12">
             <CardContent className="pt-6">
               <p className="text-muted-foreground text-lg mb-4">
-                This deck doesn't have any cards yet.
+                This deck doesn&apos;t have any cards yet.
               </p>
               <AddCardDialog deckId={deckId} />
             </CardContent>

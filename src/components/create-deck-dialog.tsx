@@ -52,7 +52,7 @@ export function CreateDeckDialog() {
       setOpen(false);
       setName("");
       setDescription("");
-    } catch (err) {
+    } catch {
       toast.error("An unexpected error occurred");
     } finally {
       setIsLoading(false);

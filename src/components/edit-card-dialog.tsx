@@ -11,7 +11,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { updateCard } from "@/app/actions/card-actions";
@@ -51,7 +50,7 @@ export function EditCardDialog({
       // Success - close dialog
       toast.success("Card updated successfully!");
       setOpen(false);
-    } catch (err) {
+    } catch {
       toast.error("An unexpected error occurred");
     } finally {
       setIsLoading(false);

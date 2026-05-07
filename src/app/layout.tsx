@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import {
   ClerkProvider,
@@ -9,6 +9,9 @@ import { dark } from "@clerk/themes";
 import { Toaster } from "sonner";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { InstallAppButton } from "@/components/install-app-button";
+import { OfflineBanner } from "@/components/offline-banner";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -20,6 +23,16 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "FlashyCardyCourse",
   description: "Learn with flashcards",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "FlashyCardyCourse",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#09090b",
 };
 
 export default function RootLayout({
@@ -48,12 +61,14 @@ export default function RootLayout({
         <body
           className={`${poppins.variable} antialiased`}
         >
+          <PwaRegister />
+          <OfflineBanner />
           <header className="flex justify-between items-center p-4 border-b">
             <div className="flex items-center gap-6">
               <Link href="/">
                 <h1 className="text-xl font-semibold">FlashyCardyCourse</h1>
               </Link>
-              <nav className="flex gap-2">
+              <nav className="flex gap-2 items-center">
                 <SignedIn>
                   <Link href="/dashboard">
                     <Button variant="ghost">Dashboard</Button>
@@ -62,6 +77,7 @@ export default function RootLayout({
                 <Link href="/pricing">
                   <Button variant="ghost">Pricing</Button>
                 </Link>
+                <InstallAppButton />
               </nav>
             </div>
             <SignedIn>

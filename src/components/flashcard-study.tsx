@@ -210,8 +210,10 @@ export function FlashcardStudy({ cards, deckId }: FlashcardStudyProps) {
           {/* Stats Bar */}
           <div className="mb-6 grid grid-cols-3 gap-4">
             <div className="text-center p-4 bg-secondary/50 rounded-lg">
-              <div className="text-2xl font-bold">{currentIndex + 1}/{totalCards}</div>
-              <div className="text-sm text-muted-foreground">Progress</div>
+              <div className="text-2xl font-bold">{progress}%</div>
+              <div className="text-sm text-muted-foreground">
+                {viewedCards.size}/{totalCards} viewed
+              </div>
             </div>
             <div className="text-center p-4 bg-green-500/10 rounded-lg border border-green-500/20">
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">{correctCount}</div>
@@ -392,7 +394,7 @@ export function FlashcardStudy({ cards, deckId }: FlashcardStudyProps) {
           <div className="text-center mb-6">
             <h2 className="text-3xl font-bold mb-2">🎉 Study Session Complete!</h2>
             <p className="text-muted-foreground">
-              You've reviewed all {totalCards} cards in this deck.
+              You&apos;ve reviewed all {totalCards} cards in this deck.
             </p>
           </div>
           
@@ -421,7 +423,7 @@ export function FlashcardStudy({ cards, deckId }: FlashcardStudyProps) {
           ) : (
             <div className="mb-6 text-center p-4 bg-background/80 rounded-lg border max-w-md mx-auto">
               <p className="text-muted-foreground">
-                You reviewed all cards but didn't mark any answers.
+                You reviewed all cards but didn&apos;t mark any answers.
               </p>
               <p className="text-sm text-muted-foreground mt-2">
                 Use Y (Correct) or N (Incorrect) to track your progress!

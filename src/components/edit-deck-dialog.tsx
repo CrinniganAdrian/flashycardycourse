@@ -61,7 +61,7 @@ export function EditDeckDialog({
       // Success - close dialog
       toast.success("Deck updated successfully!");
       setOpen(false);
-    } catch (err) {
+    } catch {
       toast.error("An unexpected error occurred");
     } finally {
       setIsLoading(false);

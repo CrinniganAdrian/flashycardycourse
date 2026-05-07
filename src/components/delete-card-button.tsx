@@ -38,7 +38,7 @@ export function DeleteCardButton({ cardId, deckId }: DeleteCardButtonProps) {
       // Success - close dialog
       toast.success("Card deleted successfully!");
       setOpen(false);
-    } catch (err) {
+    } catch {
       toast.error("An unexpected error occurred");
     } finally {
       setIsLoading(false);

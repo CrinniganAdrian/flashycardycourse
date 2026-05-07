@@ -30,7 +30,7 @@ export default async function DashboardPage() {
   
   try {
     decks = await getUserDecks();
-  } catch (error) {
+  } catch {
     // If unauthorized, redirect to home
     redirect("/");
   }
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
       {decks.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground text-lg mb-4">
-            You haven't created any decks yet.
+            You haven&apos;t created any decks yet.
           </p>
         </div>
       ) : (

@@ -80,7 +80,7 @@ function ProUserButton({ deckId, deckName, deckDescription }: AIGenerateButtonPr
         toast.success(
           `Successfully generated ${result.data.cardsGenerated} flashcards!`
         );
-      } catch (error) {
+      } catch {
         toast.error("An unexpected error occurred");
       } finally {
         setIsGenerating(false);
