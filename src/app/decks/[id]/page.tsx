@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import Link from "next/link";
 import { AddCardDialog } from "@/components/add-card-dialog";
+import { BulkAddCardsDialog } from "@/components/bulk-add-cards-dialog";
 import { EditCardDialog } from "@/components/edit-card-dialog";
 import { DeleteCardButton } from "@/components/delete-card-button";
 import { EditDeckDialog } from "@/components/edit-deck-dialog";
@@ -63,36 +64,36 @@ export default async function DeckPage({ params }: PageProps) {
           </Button>
         </div>
         
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <h1 className="text-4xl font-bold mb-2">{deck.name}</h1>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <h1 className="mb-2 text-3xl font-bold break-words sm:text-4xl">
+              {deck.name}
+            </h1>
             {deck.description && (
-              <p className="text-muted-foreground text-lg">
+              <p className="text-muted-foreground text-lg break-words">
                 {deck.description}
               </p>
             )}
-            <p className="text-sm text-muted-foreground mt-2">
-              {cards.length} {cards.length === 1 ? "card" : "cards"} • 
-              Last updated {new Date(deck.updatedAt).toLocaleDateString()}
+            <p className="text-muted-foreground mt-2 text-sm">
+              {cards.length} {cards.length === 1 ? "card" : "cards"} • Last
+              updated {new Date(deck.updatedAt).toLocaleDateString()}
             </p>
           </div>
-          
-          <div className="flex gap-2">
-            <EditDeckDialog 
-              deckId={deckId} 
+
+          <div className="flex flex-wrap items-center justify-center gap-2 lg:max-w-none lg:justify-end lg:shrink-0">
+            <EditDeckDialog
+              deckId={deckId}
               initialName={deck.name}
               initialDescription={deck.description}
             />
-            <DeleteDeckDialog 
+            <DeleteDeckDialog
               deckId={deckId}
               deckName={deck.name}
               cardCount={cards.length}
             />
             {cards.length > 0 && (
               <Button variant="default" asChild>
-                <Link href={`/decks/${deckId}/study`}>
-                  Study
-                </Link>
+                <Link href={`/decks/${deckId}/study`}>Study</Link>
               </Button>
             )}
           </div>
@@ -101,14 +102,15 @@ export default async function DeckPage({ params }: PageProps) {
       
       {/* Cards Section */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-2xl font-semibold">Cards</h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
             <AIGenerateButton
               deckId={deckId}
               deckName={deck.name}
               deckDescription={deck.description}
             />
+            <BulkAddCardsDialog deckId={deckId} />
             <AddCardDialog deckId={deckId} />
           </div>
         </div>
@@ -119,7 +121,10 @@ export default async function DeckPage({ params }: PageProps) {
               <p className="text-muted-foreground text-lg mb-4">
                 This deck doesn&apos;t have any cards yet.
               </p>
-              <AddCardDialog deckId={deckId} />
+              <div className="flex flex-wrap justify-center gap-2">
+                <BulkAddCardsDialog deckId={deckId} />
+                <AddCardDialog deckId={deckId} />
+              </div>
             </CardContent>
           </Card>
         ) : (

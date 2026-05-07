@@ -42,16 +42,18 @@ export default async function DashboardPage() {
   
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <h1 className="text-4xl font-bold">My Decks</h1>
+      <div className="mb-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-3xl font-bold break-words sm:text-4xl">
+            My Decks
+          </h1>
           <p className="text-muted-foreground mt-2">
             Manage your flashcard decks, or select a deck and start studying
           </p>
         </div>
-        
-        {/* Plan details in top-right */}
-        <div className="flex flex-col items-end gap-2">
+
+        {/* Plan details */}
+        <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
           {hasUnlimitedDecks ? (
             <>
               <Badge variant="default" className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">

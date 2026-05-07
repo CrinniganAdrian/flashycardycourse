@@ -45,6 +45,27 @@ const deleteCardSchema = z.object({
   deckId: z.number().int().positive(),
 });
 
+const bulkCardPairSchema = z.object({
+  front: z
+    .string()
+    .min(1, "Each card needs text on the front")
+    .max(5000, "Front must be 5000 characters or less")
+    .trim(),
+  back: z
+    .string()
+    .min(1, "Each card needs text on the back")
+    .max(5000, "Back must be 5000 characters or less")
+    .trim(),
+});
+
+const createBulkCardsSchema = z.object({
+  deckId: z.number().int().positive(),
+  cards: z
+    .array(bulkCardPairSchema)
+    .min(1, "Add at least one card")
+    .max(200, "Maximum 200 cards per import"),
+});
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -52,6 +73,11 @@ const deleteCardSchema = z.object({
 type CreateCardInput = z.infer<typeof createCardSchema>;
 type UpdateCardInput = z.infer<typeof updateCardSchema>;
 type DeleteCardInput = z.infer<typeof deleteCardSchema>;
+type CreateBulkCardsInput = z.infer<typeof createBulkCardsSchema>;
+
+type CreateBulkCardsResult =
+  | { success: true; data: { created: number } }
+  | { success: false; error: string };
 
 type CreateCardResult =
   | { success: true; data: { id: number } }
@@ -225,6 +251,71 @@ export async function updateCard(
  * Delete a card
  * Verifies user owns the deck that contains the card
  */
+/**
+ * Create multiple cards in one request. Verifies deck ownership once.
+ */
+export async function createBulkCards(
+  input: CreateBulkCardsInput
+): Promise<CreateBulkCardsResult> {
+  try {
+    const { userId } = await auth();
+
+    if (!userId) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const validationResult = createBulkCardsSchema.safeParse(input);
+
+    if (!validationResult.success) {
+      return {
+        success: false,
+        error: validationResult.error.issues[0]?.message ?? "Invalid input",
+      };
+    }
+
+    const { deckId, cards } = validationResult.data;
+
+    const [deck] = await db
+      .select()
+      .from(decksTable)
+      .where(
+        and(eq(decksTable.id, deckId), eq(decksTable.userId, userId))
+      )
+      .limit(1);
+
+    if (!deck) {
+      return { success: false, error: "Deck not found" };
+    }
+
+    await db.insert(cardsTable).values(
+      cards.map((row) => ({
+        deckId,
+        front: row.front,
+        back: row.back,
+      }))
+    );
+
+    revalidatePath(`/decks/${deckId}`);
+    revalidatePath("/dashboard");
+
+    return {
+      success: true,
+      data: { created: cards.length },
+    };
+  } catch (error) {
+    console.error("Error creating bulk cards:", error);
+
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    return {
+      success: false,
+      error: "Failed to create cards. Please try again.",
+    };
+  }
+}
+
 export async function deleteCard(
   input: DeleteCardInput
 ): Promise<DeleteCardResult> {

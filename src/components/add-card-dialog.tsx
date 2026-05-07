@@ -59,7 +59,7 @@ export function AddCardDialog({ deckId }: AddCardDialogProps) {
           Add Card
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] min-w-0">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Add New Card</DialogTitle>
