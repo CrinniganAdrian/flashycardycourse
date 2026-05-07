@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { InstallAppButton } from "@/components/install-app-button";
 import { OfflineBanner } from "@/components/offline-banner";
+import { OfflineNavigationGuard } from "@/components/offline-navigation-guard";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
@@ -63,6 +64,7 @@ export default function RootLayout({
         >
           <PwaRegister />
           <OfflineBanner />
+          <OfflineNavigationGuard />
           <header className="flex justify-between items-center p-4 border-b">
             <div className="flex items-center gap-6">
               <Link href="/">
